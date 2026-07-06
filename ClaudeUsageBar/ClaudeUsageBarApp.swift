@@ -32,19 +32,19 @@ struct MenuBarLabel: View {
     let store: UsageStore
 
     var body: some View {
-        let worst = store.snapshot?.worstPercent
+        let percent = store.snapshot?.allUsagePercent
 
         HStack(spacing: 3) {
-            Image(systemName: symbol(worst: worst))
-            if let worst {
-                Text("\(Int(worst.rounded()))%")
+            Image(systemName: symbol(percent: percent))
+            if let percent {
+                Text("\(Int(percent.rounded()))%")
                     .monospacedDigit()
             }
         }
-        .foregroundStyle(usageColor(worst))
+        .foregroundStyle(usageColor(percent))
     }
 
-    private func symbol(worst: Double?) -> String {
+    private func symbol(percent: Double?) -> String {
         if store.snapshot == nil {
             return store.errorReason == nil ? "hourglass" : "exclamationmark.triangle.fill"
         }

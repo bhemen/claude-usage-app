@@ -110,10 +110,23 @@ extension UsageResponse {
         return rows
     }
 
-    /// The single highest utilization across all rendered rows — the tightest constraint,
-    /// used for the menu-bar label.
+    /// The single highest utilization across all rendered rows — the tightest constraint.
     var worstPercent: Double? {
         displayRows.map(\.percent).max()
+    }
+
+    /// The all-models weekly utilization — the headline "All usage" number shown in the
+    /// menu bar. Preferred over `worstPercent` because a single per-model scoped cap (e.g.
+    /// Fable at 100%) shouldn't make the bar read 100% when overall usage is much lower.
+    /// Falls back to the tightest constraint if no all-models cap is present.
+    var allUsagePercent: Double? {
+        if let limits, !limits.isEmpty {
+            if let all = limits.first(where: { $0.kind == "weekly_all" })?.percent {
+                return all
+            }
+            return limits.compactMap(\.percent).max()
+        }
+        return sevenDay?.utilization ?? fiveHour?.utilization
     }
 }
 
