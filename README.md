@@ -40,18 +40,60 @@ The live endpoint no longer exposes per-model weekly buckets as `seven_day_<mode
 `display_name` (e.g. "Fable"). The app renders that array directly and falls back to the
 legacy top-level `five_hour` / `seven_day` windows only if `limits` is absent.
 
-## Building
+## Requirements
 
-Requires macOS 14+ and Xcode 15+ (developed on macOS 26.5 / Xcode 26.6).
+- **A Mac on macOS 14 (Sonoma) or later.** Built and tested on macOS 26 / Apple Silicon.
+- **Xcode 15 or later** — the *full* Xcode, not just the Command Line Tools, because
+  `xcodebuild` needs the macOS SDK. There is no prebuilt or notarized download; you build the
+  app yourself.
+- **Claude Code installed and signed in on that same Mac.** The app doesn't log into Claude —
+  it reads the OAuth token that Claude Code stores in the login keychain item
+  `Claude Code-credentials`. If Claude Code has never authenticated on this machine, that item
+  won't exist and the app will just show **"Not logged in — run Claude Code once."** So run
+  `claude` and sign in there first.
 
-```bash
-open ClaudeUsageBar.xcodeproj   # then press Run (⌘R)
-# or from the command line:
-xcodebuild -project ClaudeUsageBar.xcodeproj -scheme ClaudeUsageBar -configuration Debug build
-```
+## Installing on another Mac
 
-The app is signed ad-hoc ("Sign to Run Locally") — no Developer account needed for personal
-use. App Sandbox is **off** (a menu-bar app needs unrestricted Keychain + network access).
+Build it on the target Mac (a couple of minutes). **Don't copy the built `.app` from another
+machine** — it's ad-hoc signed, so a copied bundle arrives quarantined and Gatekeeper blocks
+it. Building locally avoids that entirely.
+
+1. **Check the requirements above** — especially that you're signed into Claude Code on this
+   Mac.
+
+2. **Clone and build:**
+   ```bash
+   git clone git@github.com:bhemen/claude-usage-app.git
+   cd claude-usage-app
+   xcodebuild -project ClaudeUsageBar.xcodeproj -scheme ClaudeUsageBar -configuration Release build
+   ```
+   Or open `ClaudeUsageBar.xcodeproj` in Xcode and press Run (⌘R).
+
+   > If `xcodebuild` fails with a "required plug-in failed to load" error on a fresh Xcode,
+   > run `xcodebuild -runFirstLaunch` once (installs missing components) and retry.
+
+   The build signs ad-hoc ("Sign to Run Locally") — no Apple Developer account needed. App
+   Sandbox is **off** (a menu-bar app needs unrestricted keychain + network access).
+
+3. **Install into `/Applications`** (a stable location — DerivedData can be wiped by a clean
+   build) and re-sign the moved bundle:
+   ```bash
+   APP=$(find ~/Library/Developer/Xcode/DerivedData/ClaudeUsageBar-*/Build/Products \
+         -name ClaudeUsageBar.app | head -1)
+   cp -R "$APP" /Applications/ClaudeUsageBar.app
+   codesign --force --deep --sign - /Applications/ClaudeUsageBar.app
+   open /Applications/ClaudeUsageBar.app
+   ```
+   The app has no Dock icon (`LSUIElement`); look for its gauge icon in the menu bar.
+
+4. **(Optional) Launch at login** — tick the box in the popover, or set it headlessly
+   (registration targets the running bundle, so run the installed copy's binary directly):
+   ```bash
+   /Applications/ClaudeUsageBar.app/Contents/MacOS/ClaudeUsageBar --register-login-item
+   # undo with: ... --unregister-login-item
+   ```
+   Either way it uses `SMAppService.mainApp`, so the popover checkbox and the actual state
+   stay in sync. It also appears under **System Settings → General → Login Items**.
 
 ### First run
 
@@ -59,11 +101,16 @@ You should **not** see a keychain prompt — the app reads the token via the `se
 which doesn't prompt.
 
 Why not use the direct `SecItemCopyMatching` API first? Because for an **ad-hoc-signed** app
-(what "Sign to Run Locally" produces), macOS **greys out "Always Allow"** in the keychain
-prompt — it only persists a keychain grant for apps with a stable Developer ID. So the direct
-API would prompt on *every* launch with no way to silence it. Trying the `security` CLI first
-sidesteps that entirely. `SecItemCopyMatching` remains as a fallback, so if you later sign the
-app with a stable identity it still works.
+(what "Sign to Run Locally" produces), macOS **greys out "Always Allow"** (or rejects your
+password) in the keychain prompt — it only persists a keychain grant for apps with a stable
+Developer ID. So the direct API would prompt on *every* launch with no way to silence it.
+Trying the `security` CLI first sidesteps that entirely. `SecItemCopyMatching` remains as a
+fallback, so if you later sign the app with a stable identity it still works.
+
+### After a reboot
+
+Nothing to re-enter. Your macOS login auto-unlocks the login keychain, the login item (if
+enabled) relaunches the app, and it reads the token via the `security` CLI with no prompt.
 
 ## Features
 
@@ -90,27 +137,34 @@ app with a stable identity it still works.
 | `ClaudeUsageBar/UsageBar.swift`          | Progress-bar row view, threshold colors, reset-countdown formatting |
 | `ClaudeUsageBar/ClaudeUsageBarApp.swift` | `@main` app, `MenuBarExtra` label + popover |
 
-## Making it permanent
+## Updating
 
-Install into `/Applications` (a stable location — DerivedData can be wiped by a clean build)
-and enable the login item:
+After pulling changes (or rebuilding locally), reinstall the built app over the old one:
 
 ```bash
-SRC="$HOME/Library/Developer/Xcode/DerivedData/ClaudeUsageBar-*/Build/Products/Debug/ClaudeUsageBar.app"
-cp -R $SRC /Applications/ClaudeUsageBar.app
-codesign --force --deep --sign - /Applications/ClaudeUsageBar.app   # re-sign the moved bundle
+git pull
+xcodebuild -project ClaudeUsageBar.xcodeproj -scheme ClaudeUsageBar -configuration Release build
+APP=$(find ~/Library/Developer/Xcode/DerivedData/ClaudeUsageBar-*/Build/Products \
+      -name ClaudeUsageBar.app | head -1)
+osascript -e 'quit app "ClaudeUsageBar"' 2>/dev/null
+cp -R "$APP" /Applications/ClaudeUsageBar.app
+codesign --force --deep --sign - /Applications/ClaudeUsageBar.app
 open /Applications/ClaudeUsageBar.app
 ```
 
-**Launch at login** can be toggled from the popover, or set headlessly (registration targets
-the running bundle, so run the installed copy's binary directly):
+The login-item registration persists across updates as long as the bundle stays at
+`/Applications/ClaudeUsageBar.app`.
 
-```bash
-/Applications/ClaudeUsageBar.app/Contents/MacOS/ClaudeUsageBar --register-login-item
-/Applications/ClaudeUsageBar.app/Contents/MacOS/ClaudeUsageBar --unregister-login-item
-```
+## Troubleshooting
 
-Either way it uses `SMAppService.mainApp`, so the popover checkbox and the actual state stay
-in sync. After a reboot the login keychain auto-unlocks with your macOS login, the app reads
-the token via the `security` CLI with no prompt, and the login item relaunches it — nothing
-to re-enter.
+- **"Not logged in — run Claude Code once":** Claude Code isn't authenticated on this Mac.
+  Run `claude` and sign in; the app picks up the token on its next poll.
+- **"Stale token — sign in to Claude Code":** the stored token expired and Claude Code hasn't
+  refreshed it yet. Run Claude Code once to refresh.
+- **"Offline":** no network / endpoint unreachable. The app keeps showing the last good
+  snapshot and recovers automatically.
+- **`xcodebuild` "required plug-in failed to load":** run `xcodebuild -runFirstLaunch`, then
+  rebuild.
+- **A keychain password prompt appears anyway:** you can dismiss it — the app reads via the
+  `security` CLI regardless. (Entering a password can't succeed for an ad-hoc-signed app; see
+  "First run".)
