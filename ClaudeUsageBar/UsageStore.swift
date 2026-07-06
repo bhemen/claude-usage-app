@@ -48,7 +48,9 @@ final class UsageStore {
 
     private func pollLoop() async {
         while !Task.isCancelled {
-            let delay = await refresh()
+            // Never sleep less than 5 s, as a hard backstop against any code path (or a
+            // bogus Retry-After) that could otherwise spin the loop and hammer the API.
+            let delay = max(await refresh(), 5)
             try? await Task.sleep(for: .seconds(delay))
         }
     }
@@ -71,7 +73,10 @@ final class UsageStore {
             errorReason = error.userMessage
             switch error {
             case .rateLimited(let retryAfter):
-                let base = retryAfter ?? 90
+                // Honor Retry-After, but never retry faster than 60 s. A 429 with a small
+                // or zero Retry-After (which the endpoint sends under load) would otherwise
+                // drive a near-zero sleep and hammer the API — the "flickering" symptom.
+                let base = max(retryAfter ?? 90, 60)
                 return min(base * pow(2, Double(consecutiveFailures - 1)), 600)
             case .noToken, .unauthorized:
                 // Token problems won't fix themselves quickly; check back in 2 min.
