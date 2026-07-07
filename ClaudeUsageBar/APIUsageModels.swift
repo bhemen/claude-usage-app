@@ -127,6 +127,11 @@ struct APIUsageSummary {
     let monthInputTokens: Int
     let monthOutputTokens: Int
     let perModel: [ModelUsage]      // sorted by cost, then token volume, descending
+    /// The latest UTC day the reports actually cover, e.g. "Jul 6". The Admin reporting
+    /// pipeline lags the console's live billing, so today's usage usually isn't included
+    /// yet — surfacing this lets an empty "Today" read as "not reported yet", not "zero".
+    /// `nil` only when the API returned no day buckets at all.
+    let lastReportedDayLabel: String?
 
     struct ModelUsage: Identifiable {
         let id: String              // model name

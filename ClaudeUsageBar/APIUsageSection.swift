@@ -191,6 +191,9 @@ struct APIUsageSection: View {
 
     private var statusText: String? {
         var parts: [String] = []
+        if let day = store.summary?.lastReportedDayLabel {
+            parts.append("reported through \(day)")
+        }
         if let updated = store.lastUpdated {
             parts.append("updated \(UsageMenuView.relativeAge(updated, now: now))")
         }

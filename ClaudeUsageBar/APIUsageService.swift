@@ -179,6 +179,21 @@ struct APIUsageService {
             }
         }
 
+        // The most recent day bucket the reports return, across both endpoints — the
+        // reporting window's upper edge. The pipeline omits days it hasn't finalized, so
+        // this typically lags today; we show it so a not-yet-reported "Today" isn't read
+        // as a genuine zero.
+        var lastReported: Date?
+        for startingAt in (usagePages.flatMap { $0.data.map(\.startingAt) }
+                           + costPages.flatMap { $0.data.map(\.startingAt) }) {
+            guard let startingAt, let d = iso.date(from: startingAt) else { continue }
+            if lastReported == nil || d > lastReported! { lastReported = d }
+        }
+        let dayLabel = DateFormatter()
+        dayLabel.dateFormat = "MMM d"
+        dayLabel.timeZone = TimeZone(identifier: "UTC")!
+        let lastReportedDayLabel = lastReported.map { dayLabel.string(from: $0) }
+
         let models = Set(tokensByModel.keys).union(centsByModel.keys)
         let perModel = models.map { model in
             APIUsageSummary.ModelUsage(
@@ -198,7 +213,8 @@ struct APIUsageService {
             todayCostUSD: todayCents / 100,
             monthInputTokens: monthIn,
             monthOutputTokens: monthOut,
-            perModel: perModel
+            perModel: perModel,
+            lastReportedDayLabel: lastReportedDayLabel
         )
     }
 }
