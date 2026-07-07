@@ -4,6 +4,7 @@ import ServiceManagement
 @main
 struct ClaudeUsageBarApp: App {
     @State private var store: UsageStore
+    @State private var apiStore: APIUsageStore
 
     init() {
         // Support headless (un)registration of the login item so it can be set up from a
@@ -12,11 +13,12 @@ struct ClaudeUsageBarApp: App {
         // flag is handled, before any window/polling starts.
         LoginItemControl.handleLaunchFlagsIfNeeded()
         _store = State(initialValue: UsageStore())
+        _apiStore = State(initialValue: APIUsageStore())
     }
 
     var body: some Scene {
         MenuBarExtra {
-            UsageMenuView(store: store)
+            UsageMenuView(store: store, apiStore: apiStore)
         } label: {
             MenuBarLabel(store: store)
         }
@@ -56,6 +58,7 @@ struct MenuBarLabel: View {
 
 struct UsageMenuView: View {
     let store: UsageStore
+    let apiStore: APIUsageStore
 
     var body: some View {
         // A 1 s ticker so reset countdowns and "updated Ns ago" stay live.
@@ -83,6 +86,10 @@ struct UsageMenuView: View {
                 }
                 .padding(.horizontal, 14)
             }
+
+            Divider().padding(.vertical, 8)
+
+            APIUsageSection(store: apiStore, now: now)
 
             Divider().padding(.vertical, 8)
 

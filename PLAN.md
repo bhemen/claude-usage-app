@@ -131,6 +131,31 @@ the first-run Keychain prompt in the README.
 - Later niceties: usage-history sparkline, notifications at 80/90/100%, click-through to the
   claude.ai usage page.
 
+## API plan usage (added later)
+
+A second popover section shows a pay-as-you-go **API organization's** month-to-date tokens and
+cost, alongside the Max-plan limits. Different data source and auth from the OAuth usage
+endpoint above:
+
+- **Endpoints (read-only, Admin API):** `GET /v1/organizations/usage_report/messages` (token
+  counts) and `GET /v1/organizations/cost_report` (USD as cents), `bucket_width=1d`, grouped by
+  `model` / `description`, paginated via `next_page`.
+- **Auth:** an **Admin API key** (`sk-ant-admin01-…`) in the `x-api-key` header. Confirmed
+  empirically that nothing else is accepted — the Max OAuth token gives `403 "Authentication
+  method not allowed"`, and a standard `sk-ant-api03` workspace key gives `401 invalid
+  x-api-key` (while working fine on `/v1/models`).
+- **Hard requirement — a multi-user org.** Admin keys exist only for Console organizations, not
+  individual/personal API accounts (no *Settings → Admin keys* page otherwise). An Admin key
+  only sees its own org, so usage in a different org/account is invisible. Documented in the
+  README under "API plan usage".
+- **Key storage:** login Keychain item `ClaudeUsageBar-admin-key` via the `security` CLI
+  (`AdminKeyStore`), mirroring the OAuth-token read path; entered through a `SecureField` in the
+  popover.
+- **Cadence:** poll every 5 min (Admin data lags ~5 min; cost is daily granularity). Same
+  last-good-plus-error resilience and backoff as the Max store.
+- **Files:** `AdminKeyStore`, `APIUsageModels`, `APIUsageService`, `APIUsageStore`,
+  `APIUsageSection` (see README source layout).
+
 ## References
 
 - Endpoint + response schema documented in `savaroma/claude-usage-widget`

@@ -7,6 +7,11 @@ per-model weekly caps like Fable) — always one glance away, without opening th
 The menu-bar item shows the single highest utilization across your active limits; clicking it
 opens a popover with a bar per limit and a live reset countdown.
 
+If you also have a pay-as-you-go **API plan**, the popover can show that organization's
+month-to-date **token usage and cost** in a second section — but only for a **multi-user
+Console organization**, which is the only kind of account that can create the required Admin
+API key. See [API plan usage](#api-plan-usage) for the requirement and setup.
+
 ## How it works
 
 It polls the same read-only endpoint Claude Code's own limit indicator uses:
@@ -122,8 +127,71 @@ enabled) relaunches the app, and it reads the token via the `security` CLI with 
   "resets Tue 9:00 PM").
 - **Resilience:** keeps showing the last good snapshot with an error note when offline or
   rate-limited; recovers automatically. Never blanks or crashes on a bad/absent token.
+- **API plan usage (optional):** a second popover section showing an API organization's
+  month-to-date cost, tokens, and per-model breakdown via an Admin API key. Requires a
+  multi-user org — see [API plan usage](#api-plan-usage).
 - **Launch at login:** toggle in the popover (uses `SMAppService`).
 - **Quit** from the popover.
+
+## API plan usage
+
+The popover has an optional **API usage** section that shows your Anthropic **API
+organization's** month-to-date cost and token usage, separate from the Max-plan limits above.
+It reads two **read-only** Admin API endpoints on each poll:
+
+```
+GET https://api.anthropic.com/v1/organizations/usage_report/messages   # tokens
+GET https://api.anthropic.com/v1/organizations/cost_report             # USD (cents)
+```
+
+### Requirement: a multi-user-org Admin key
+
+**This section only works with an Admin API key (`sk-ant-admin01-…`), and Admin keys are only
+issued to multi-user Console organizations — not to individual/personal API accounts.** No
+other credential is accepted. This isn't a guess; it's verified:
+
+- The OAuth token the Max plan uses → `403` `"Authentication method not allowed for this endpoint"`.
+- A standard workspace key (`sk-ant-api03-…`) → `401 invalid x-api-key` — *even though the
+  same key returns `200` on `/v1/models`*. The Usage & Cost API accepts nothing but an Admin key.
+
+If your Console account is an individual account, the **Settings → Admin keys** page doesn't
+exist and you can't create one — the workspace "Create key" dialog only makes standard
+`sk-ant-api03` keys. To get an Admin key you must set up a real **organization** (Console →
+Organization settings → add a member so it's genuinely multi-user), then create the key at
+**[Settings → Admin keys](https://platform.claude.com/settings/admin-keys)** (requires the
+**admin** role — as the org's only member you have it).
+
+> **An Admin key only sees the organization it belongs to.** If you create a *new* org just to
+> get the key, that org starts empty and the section shows all zeros — your existing usage
+> lives in whichever org owns the API keys that made the calls. Point the Admin key at the org
+> whose usage you actually want to monitor, and route your API traffic through that org's keys.
+
+### Adding the key
+
+1. Click the menu-bar icon → in the **API usage** section, click **Add Admin API key…**
+2. Paste your `sk-ant-admin01-…` key and click **Save**.
+
+The key is stored in your **login Keychain** (generic-password item `ClaudeUsageBar-admin-key`)
+via the `security` CLI — the same prompt-free mechanism used for the Max-plan token. It never
+leaves your Mac except as the `x-api-key` header to `api.anthropic.com`. Use **⋯ → Remove Admin
+key** to delete it, or **Replace Admin key…** to swap it. (Saving passes the key as a `security`
+argument, so it's briefly visible to `ps` for processes running as you — fine for a personal
+Mac; note it if you're on a shared machine.)
+
+### What it shows, and caveats
+
+- **This month / Today** — month-to-date and current-day cost in USD.
+- **Tokens** — month-to-date input and output tokens (all input kinds — uncached, cache read,
+  and cache creation — summed, matching the console's "tokens in").
+- **Per model** — the top models by cost, each with combined token count and cost.
+- Polls every **5 minutes**: Admin data lags ~5 min and cost is daily-granularity, so there's
+  nothing to gain from polling faster (and the API asks for ≤ 1 request/minute).
+- **"Today" is a UTC day** — the cost API buckets on UTC day boundaries, so it rolls over at
+  midnight UTC, not local midnight.
+- **Priority Tier cost is not included** in the cost endpoint (Anthropic bills it separately);
+  its tokens still appear in the token totals.
+- Figures are the **API usage/cost reports** — API traffic only, not the Console-Workbench-plus-API
+  mix shown on the website's Usage page.
 
 ## Source layout
 
@@ -135,7 +203,12 @@ enabled) relaunches the app, and it reads the token via the `security` CLI with 
 | `ClaudeUsageBar/UsageStore.swift`        | `@Observable` poll loop + backoff, holds last-good snapshot |
 | `ClaudeUsageBar/LoginItemControl.swift`  | `SMAppService` login-item register/unregister + headless launch flags |
 | `ClaudeUsageBar/UsageBar.swift`          | Progress-bar row view, threshold colors, reset-countdown formatting |
-| `ClaudeUsageBar/ClaudeUsageBarApp.swift` | `@main` app, `MenuBarExtra` label + popover |
+| `ClaudeUsageBar/ClaudeUsageBarApp.swift` | `@main` app, `MenuBarExtra` label + popover (both sections) |
+| `ClaudeUsageBar/AdminKeyStore.swift`     | Admin API key read/write/delete in the login Keychain via the `security` CLI |
+| `ClaudeUsageBar/APIUsageModels.swift`    | `Codable` wire models for the usage & cost reports + rollup view model + token formatting |
+| `ClaudeUsageBar/APIUsageService.swift`   | Admin API GET (paginated), month-to-date range, tokens+cost rollup, typed errors |
+| `ClaudeUsageBar/APIUsageStore.swift`     | `@Observable` API poll loop (5 min) + backoff; owns the Admin key lifecycle |
+| `ClaudeUsageBar/APIUsageSection.swift`   | The "API usage" popover section: metrics, per-model rows, key-entry UI |
 
 ## Updating
 
@@ -168,3 +241,8 @@ The login-item registration persists across updates as long as the bundle stays 
 - **A keychain password prompt appears anyway:** you can dismiss it — the app reads via the
   `security` CLI regardless. (Entering a password can't succeed for an ad-hoc-signed app; see
   "First run".)
+- **API usage section shows all zeros:** the Admin key is valid but belongs to an
+  organization with no usage — most often a *new* org created just to obtain the key. The key
+  can only report on its own org; see the note under [API plan usage](#api-plan-usage).
+- **"Admin key rejected — check the key":** the stored key isn't a valid `sk-ant-admin01-…`
+  Admin key (a standard `sk-ant-api03` workspace key won't work). Use **⋯ → Replace Admin key…**.

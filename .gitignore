@@ -17,3 +17,8 @@ xcuserdata/
 .build/
 .swiftpm/
 Packages/
+
+# Secrets — never commit API keys
+.env
+.env.*
+!.env.example
