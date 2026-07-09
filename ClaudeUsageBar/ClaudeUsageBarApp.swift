@@ -28,8 +28,8 @@ struct ClaudeUsageBarApp: App {
 
 // MARK: - Menu-bar label
 
-/// Compact status shown in the menu bar: an icon plus the single highest utilization
-/// across all active windows (the tightest constraint at a glance).
+/// Compact status shown in the menu bar: an icon plus the weekly all-models usage
+/// (falling back to the tightest active limit when no all-models cap is reported).
 struct MenuBarLabel: View {
     let store: UsageStore
 

@@ -4,8 +4,14 @@ A native SwiftUI **menu-bar app** for macOS that shows your Claude plan usage �
 numbers as claude.ai *Settings → Usage* (current 5-hour session, weekly all-models, and
 per-model weekly caps like Fable) — always one glance away, without opening the browser.
 
-The menu-bar item shows the single highest utilization across your active limits; clicking it
-opens a popover with a bar per limit and a live reset countdown.
+The menu-bar item shows your weekly all-models usage (falling back to the tightest active
+limit if no all-models cap is reported); clicking it opens a popover with a bar per limit and
+a live reset countdown.
+
+**Your Max/Pro plan needs no key or sign-in here.** The app reads the OAuth token Claude Code
+already stored on this Mac, so the plan usage appears automatically once you're signed into
+Claude Code — there's nothing to paste. (The **Add Admin API key…** button in the popover is
+*only* for the separate, optional [API plan usage](#api-plan-usage) section below.)
 
 If you also have a pay-as-you-go **API plan**, the popover can show that organization's
 month-to-date **token usage and cost** in a second section — but only for a **multi-user
@@ -68,7 +74,7 @@ it. Building locally avoids that entirely.
 
 2. **Clone and build:**
    ```bash
-   git clone git@github.com:bhemen/claude-usage-app.git
+   git clone https://github.com/bhemen/claude-usage-app.git
    cd claude-usage-app
    xcodebuild -project ClaudeUsageBar.xcodeproj -scheme ClaudeUsageBar -configuration Release build
    ```
@@ -119,8 +125,8 @@ enabled) relaunches the app, and it reads the token via the `security` CLI with 
 
 ## Features
 
-- **Menu-bar label:** an icon + the single highest utilization across all active windows
-  (your tightest constraint at a glance), color-coded (green `<40`, yellow `40–69`,
+- **Menu-bar label:** an icon + your weekly all-models usage (falling back to the tightest
+  active limit if no all-models cap is reported), color-coded (green `<40`, yellow `40–69`,
   orange `70–89`, red `≥90`).
 - **Popover:** a progress bar per window — Current session, Weekly · all models, and each
   per-model weekly cap — with percentage and a live reset countdown ("resets in 4h56m" /
@@ -246,3 +252,8 @@ The login-item registration persists across updates as long as the bundle stays 
   can only report on its own org; see the note under [API plan usage](#api-plan-usage).
 - **"Admin key rejected — check the key":** the stored key isn't a valid `sk-ant-admin01-…`
   Admin key (a standard `sk-ant-api03` workspace key won't work). Use **⋯ → Replace Admin key…**.
+
+## License
+
+[MIT](LICENSE). This is an unofficial personal project — not affiliated with or endorsed by
+Anthropic, and it relies on an undocumented endpoint that may change without notice.

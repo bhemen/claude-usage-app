@@ -9,7 +9,8 @@ import Security
 /// token refreshed, so we simply re-read it on every poll rather than implementing our own
 /// OAuth refresh (which would rotate the refresh token and log Claude Code out).
 ///
-/// The first read triggers a one-time macOS "allow access" prompt — choose *Always Allow*.
+/// The primary read path shells out to the `security` CLI, which reads the item *without* a
+/// keychain prompt (see `accessToken()` for why the in-process API isn't tried first).
 enum KeychainReader {
     private static let service = "Claude Code-credentials"
 
