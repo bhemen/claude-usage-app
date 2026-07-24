@@ -54,9 +54,11 @@ legacy top-level `five_hour` / `seven_day` windows only if `limits` is absent.
 ## Requirements
 
 - **A Mac on macOS 14 (Sonoma) or later.** Built and tested on macOS 26 / Apple Silicon.
-- **Xcode 15 or later** — the *full* Xcode, not just the Command Line Tools, because
-  `xcodebuild` needs the macOS SDK. There is no prebuilt or notarized download; you build the
-  app yourself.
+- **Xcode 15 or later** — the *full* Xcode, not just the Command Line Tools. The Command Line
+  Tools ship compilers and macOS SDKs but no `xcodebuild`, and none of the Xcode build system
+  it drives (scheme resolution, asset-catalog compilation, `Info.plist` processing,
+  code-signing orchestration) — all of which this `.xcodeproj` needs. There is no prebuilt or
+  notarized download; you build the app yourself.
 - **Claude Code installed and signed in on that same Mac.** The app doesn't log into Claude —
   it reads the OAuth token that Claude Code stores in the login keychain item
   `Claude Code-credentials`. If Claude Code has never authenticated on this machine, that item
@@ -72,7 +74,18 @@ it. Building locally avoids that entirely.
 1. **Check the requirements above** — especially that you're signed into Claude Code on this
    Mac.
 
-2. **Clone and build:**
+2. **Point the toolchain at the full Xcode, and clear its license gate.** If you've only ever
+   used the Command Line Tools, `xcode-select` still points at them and `xcodebuild` will fail
+   with *"tool 'xcodebuild' requires Xcode"* — the stub at `/usr/bin/xcodebuild` forwards to
+   the active developer directory, and there's no `xcodebuild` in the CLT one. A freshly
+   installed Xcode also refuses to run until its license is accepted once. Both need `sudo`:
+   ```bash
+   xcode-select -p    # if this prints /Library/Developer/CommandLineTools, run the next line
+   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+   sudo xcodebuild -license accept
+   ```
+
+3. **Clone and build:**
    ```bash
    git clone https://github.com/bhemen/claude-usage-app.git
    cd claude-usage-app
@@ -80,13 +93,14 @@ it. Building locally avoids that entirely.
    ```
    Or open `ClaudeUsageBar.xcodeproj` in Xcode and press Run (⌘R).
 
-   > If `xcodebuild` fails with a "required plug-in failed to load" error on a fresh Xcode,
-   > run `xcodebuild -runFirstLaunch` once (installs missing components) and retry.
+   > If `xcodebuild` fails with a "required plug-in failed to load" error (e.g. a missing
+   > `DVTDownloads.framework`) on a fresh Xcode, run `xcodebuild -runFirstLaunch` once to
+   > install the missing components, then retry. This one does **not** need `sudo`.
 
    The build signs ad-hoc ("Sign to Run Locally") — no Apple Developer account needed. App
    Sandbox is **off** (a menu-bar app needs unrestricted keychain + network access).
 
-3. **Install into `/Applications`** (a stable location — DerivedData can be wiped by a clean
+4. **Install into `/Applications`** (a stable location — DerivedData can be wiped by a clean
    build) and re-sign the moved bundle:
    ```bash
    APP=$(find ~/Library/Developer/Xcode/DerivedData/ClaudeUsageBar-*/Build/Products \
@@ -97,7 +111,7 @@ it. Building locally avoids that entirely.
    ```
    The app has no Dock icon (`LSUIElement`); look for its gauge icon in the menu bar.
 
-4. **(Optional) Launch at login** — tick the box in the popover, or set it headlessly
+5. **(Optional) Launch at login** — tick the box in the popover, or set it headlessly
    (registration targets the running bundle, so run the installed copy's binary directly):
    ```bash
    /Applications/ClaudeUsageBar.app/Contents/MacOS/ClaudeUsageBar --register-login-item
@@ -225,11 +239,23 @@ git pull
 xcodebuild -project ClaudeUsageBar.xcodeproj -scheme ClaudeUsageBar -configuration Release build
 APP=$(find ~/Library/Developer/Xcode/DerivedData/ClaudeUsageBar-*/Build/Products \
       -name ClaudeUsageBar.app | head -1)
-osascript -e 'quit app "ClaudeUsageBar"' 2>/dev/null
-cp -R "$APP" /Applications/ClaudeUsageBar.app
-codesign --force --deep --sign - /Applications/ClaudeUsageBar.app
-open /Applications/ClaudeUsageBar.app
+if [ -d "$APP" ]; then
+  osascript -e 'quit app "ClaudeUsageBar"' 2>/dev/null
+  rm -rf /Applications/ClaudeUsageBar.app          # replace the bundle, don't merge into it
+  cp -R "$APP" /Applications/ClaudeUsageBar.app
+  codesign --force --deep --sign - /Applications/ClaudeUsageBar.app
+  open /Applications/ClaudeUsageBar.app
+else
+  echo "No built .app found under DerivedData — did the build above succeed?"
+fi
 ```
+
+The `rm -rf` matters: `cp -R` onto an *existing* bundle merges into it rather than replacing
+it, so a file that a later version drops would survive as a stale leftover and get sealed
+into the freshly re-signed bundle. Removing first guarantees the installed app is exactly
+what was built. The `[ -d "$APP" ]` guard is what makes that safe — without it, a failed
+build leaves `$APP` empty and the `rm -rf` would delete your installed copy with nothing to
+put back.
 
 The login-item registration persists across updates as long as the bundle stays at
 `/Applications/ClaudeUsageBar.app`.
@@ -242,8 +268,13 @@ The login-item registration persists across updates as long as the bundle stays 
   refreshed it yet. Run Claude Code once to refresh.
 - **"Offline":** no network / endpoint unreachable. The app keeps showing the last good
   snapshot and recovers automatically.
-- **`xcodebuild` "required plug-in failed to load":** run `xcodebuild -runFirstLaunch`, then
-  rebuild.
+- **`xcodebuild` "requires Xcode, but active developer directory is a command line tools
+  instance":** `xcode-select` points at the Command Line Tools, which contain no `xcodebuild`.
+  Run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+- **`xcodebuild` "You have not agreed to the Xcode license agreements":** run
+  `sudo xcodebuild -license accept`.
+- **`xcodebuild` "required plug-in failed to load":** run `xcodebuild -runFirstLaunch` (no
+  `sudo` needed), then rebuild.
 - **A keychain password prompt appears anyway:** you can dismiss it — the app reads via the
   `security` CLI regardless. (Entering a password can't succeed for an ad-hoc-signed app; see
   "First run".)
