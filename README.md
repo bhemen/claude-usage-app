@@ -194,7 +194,9 @@ Organization settings → add a member so it's genuinely multi-user), then creat
 The key is stored in your **login Keychain** (generic-password item `ClaudeUsageBar-admin-key`)
 via the `security` CLI — the same prompt-free mechanism used for the Max-plan token. It never
 leaves your Mac except as the `x-api-key` header to `api.anthropic.com`. Use **⋯ → Remove Admin
-key** to delete it, or **Replace Admin key…** to swap it. (Saving passes the key as a `security`
+key** to delete it, or **Replace Admin key…** to swap it. The app reads the key once at launch
+and keeps it in memory, so edits made directly in Keychain Access take effect after a relaunch;
+if a key leaks, revoke it in the Console rather than just deleting it locally. (Saving passes the key as a `security`
 argument, so it's briefly visible to `ps` for processes running as you — fine for a personal
 Mac; note it if you're on a shared machine.)
 

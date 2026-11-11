@@ -8,6 +8,12 @@ import Observation
 /// (well under the API's ~1 req/min guidance) and back off on errors. Everything is gated on
 /// an Admin key being present; without one the store stays idle and the UI shows a
 /// configuration prompt.
+///
+/// The key is read from the Keychain once at launch and then held in memory. The app owns the
+/// key, so `setAdminKey` / `clearAdminKey` are the only ways it changes, and caching avoids
+/// spawning `/usr/bin/security` on the main actor every poll. Trade-off: deleting the item in
+/// Keychain Access isn't noticed until relaunch — revoke a leaked key in the Console instead,
+/// after which polls report "Admin key rejected".
 @MainActor
 @Observable
 final class APIUsageStore {
@@ -17,12 +23,16 @@ final class APIUsageStore {
     private(set) var isRefreshing = false
     private(set) var isConfigured: Bool
 
+    /// The cached Admin key. Not observable state: nothing in the UI should read or track it.
+    @ObservationIgnored private var adminKey: String?
     private let service = APIUsageService()
     private var pollTask: Task<Void, Never>?
     private var consecutiveFailures = 0
 
     init() {
-        isConfigured = AdminKeyStore.load() != nil
+        // One synchronous Keychain read (~15 ms) at launch; polls use the cached copy.
+        adminKey = AdminKeyStore.load()
+        isConfigured = adminKey != nil
         if isConfigured { start() }
     }
 
@@ -34,6 +44,7 @@ final class APIUsageStore {
             errorReason = "Couldn't save key to Keychain"
             return
         }
+        adminKey = trimmed
         summary = nil
         errorReason = nil
         consecutiveFailures = 0
@@ -45,6 +56,7 @@ final class APIUsageStore {
     func clearAdminKey() {
         pollTask?.cancel()
         AdminKeyStore.clear()
+        adminKey = nil
         isConfigured = false
         isRefreshing = false  // the cancelled poll leaves this alone; see `refresh()`
         summary = nil
@@ -77,7 +89,7 @@ final class APIUsageStore {
 
     @discardableResult
     private func refresh() async -> Double {
-        guard let key = AdminKeyStore.load() else {
+        guard let key = adminKey else {
             isConfigured = false
             return 600
         }
