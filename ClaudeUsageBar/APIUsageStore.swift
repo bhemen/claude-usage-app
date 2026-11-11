@@ -36,26 +36,31 @@ final class APIUsageStore {
         if isConfigured { start() }
     }
 
-    /// Saves a new Admin key and (re)starts polling from now.
-    func setAdminKey(_ key: String) {
+    /// Saves a new Admin key and (re)starts polling from now. Returns `false` if the Keychain
+    /// write failed; nothing changes then (an existing key keeps being used), and the caller
+    /// reports the failure — not `errorReason`, which the next successful poll would clear.
+    @discardableResult
+    func setAdminKey(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard AdminKeyStore.save(trimmed) else {
-            errorReason = "Couldn't save key to Keychain"
-            return
-        }
+        guard !trimmed.isEmpty else { return false }
+        guard AdminKeyStore.save(trimmed) else { return false }
         adminKey = trimmed
         summary = nil
         errorReason = nil
         consecutiveFailures = 0
         isConfigured = true
         start()
+        return true
     }
 
     /// Removes the Admin key and stops polling; the API section returns to its prompt state.
-    func clearAdminKey() {
+    /// Returns `false`, changing nothing, if the key is still in the Keychain afterwards —
+    /// otherwise the section would look cleared but the key would come back at next launch.
+    @discardableResult
+    func clearAdminKey() -> Bool {
+        // `clear()` also reports false when there was no item; only a surviving key is a failure.
+        if !AdminKeyStore.clear() && AdminKeyStore.load() != nil { return false }
         pollTask?.cancel()
-        AdminKeyStore.clear()
         adminKey = nil
         isConfigured = false
         isRefreshing = false  // the cancelled poll leaves this alone; see `refresh()`
@@ -63,6 +68,7 @@ final class APIUsageStore {
         lastUpdated = nil
         errorReason = nil
         consecutiveFailures = 0
+        return true
     }
 
     /// User-initiated refresh: resets backoff and restarts the cadence from now.

@@ -27,16 +27,20 @@ enum KeychainReader {
     /// stable Developer ID — and for such an app macOS greys out "Always Allow", so the
     /// prompt can never be silenced. The direct API is kept as a secondary path: if this
     /// app is ever signed with a stable identity and granted access, it works too, and it's
-    /// a backstop if the CLI is unavailable — but only when the CLI *read* fails, never when
-    /// it read the item and the contents didn't decode. The credentials file is a last resort.
+    /// a backstop if the CLI can't be run at all. It is *not* tried when the CLI ran and
+    /// failed (keychain locked, access denied, no output) or found an item that didn't decode:
+    /// the in-process read of an existing item would show its prompt, and the store retries
+    /// every couple of minutes — a prompt loop. The credentials file is a last resort.
     static func accessToken() -> String? {
-        if let data = readViaSecurityCLI() {
+        switch readViaSecurityCLI() {
+        case .found(let data):
             if let token = decodeToken(from: data) { return token }
-            // The CLI found the item but it holds no OAuth token. Don't fall through to
-            // `SecItemCopyMatching`: it would read the same item but show a keychain prompt,
-            // and the store retries every couple of minutes — a prompt loop.
-        } else if let data = readKeychainData(), let token = decodeToken(from: data) {
-            return token
+        case .unavailable:
+            if let data = readKeychainData(), let token = decodeToken(from: data) {
+                return token
+            }
+        case .notFound, .failed:
+            break
         }
         if let data = readCredentialsFile(), let token = decodeToken(from: data) {
             return token
@@ -59,7 +63,14 @@ enum KeychainReader {
         return item as? Data
     }
 
-    private static func readViaSecurityCLI() -> Data? {
+    private enum CLIRead {
+        case found(Data)
+        case notFound      // exit 44 (errSecItemNotFound)
+        case failed        // any other non-zero exit, or empty output
+        case unavailable   // couldn't launch /usr/bin/security
+    }
+
+    private static func readViaSecurityCLI() -> CLIRead {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", service, "-w"]
@@ -70,12 +81,16 @@ enum KeychainReader {
             try process.run()
             process.waitUntilExit()
         } catch {
-            return nil
+            return .unavailable
         }
-        guard process.terminationStatus == 0 else { return nil }
+        switch process.terminationStatus {
+        case 0: break
+        case 44: return .notFound
+        default: return .failed
+        }
+        // Includes the CLI's trailing newline; `decodeToken` trims it.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        // The CLI appends a trailing newline; trim it before JSON decoding.
-        return data.isEmpty ? nil : data
+        return data.isEmpty ? .failed : .found(data)
     }
 
     private static func readCredentialsFile() -> Data? {

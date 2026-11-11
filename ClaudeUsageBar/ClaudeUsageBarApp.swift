@@ -66,6 +66,12 @@ struct UsageMenuView: View {
             content(now: context.date)
         }
         .frame(width: 288)
+        // The login item can be approved or switched off in System Settings while we run;
+        // re-check each time the popover opens (its window becomes key).
+        .onAppear { store.refreshLoginItemStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            store.refreshLoginItemStatus()
+        }
     }
 
     @ViewBuilder
@@ -154,6 +160,18 @@ struct UsageMenuView: View {
                 Text("Launch at login").font(.system(size: 12))
             }
             .toggleStyle(.checkbox)
+
+            if store.loginItemNeedsApproval {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Not allowed in Login Items settings.")
+                        .foregroundStyle(.secondary)
+                    Button("Open Login Items Settings…") {
+                        LoginItemControl.openSystemSettings()
+                    }
+                    .buttonStyle(.link)
+                }
+                .font(.system(size: 10.5))
+            }
 
             if let loginError = store.loginItemError {
                 Text(loginError)

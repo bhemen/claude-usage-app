@@ -8,6 +8,8 @@ struct APIUsageSection: View {
 
     @State private var showingKeyField = false
     @State private var keyInput = ""
+    /// A failed Keychain save/remove. View-local so a successful poll can't clear it.
+    @State private var keyActionError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -50,11 +52,14 @@ struct APIUsageSection: View {
                 Menu {
                     Button("Replace Admin key…") {
                         keyInput = ""
+                        keyActionError = nil
                         showingKeyField = true
                     }
                     Button("Remove Admin key", role: .destructive) {
                         showingKeyField = false
-                        store.clearAdminKey()
+                        keyActionError = store.clearAdminKey()
+                            ? nil
+                            : "Couldn't remove the key from the Keychain; it's still in use."
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -119,6 +124,8 @@ struct APIUsageSection: View {
 
         if showingKeyField {
             keyEntry
+        } else if let keyActionError {
+            keyErrorText(keyActionError)
         }
     }
 
@@ -136,6 +143,7 @@ struct APIUsageSection: View {
         } else {
             Button {
                 keyInput = ""
+                keyActionError = nil
                 showingKeyField = true
             } label: {
                 Text("Add Admin API key…").font(.system(size: 12))
@@ -158,18 +166,40 @@ struct APIUsageSection: View {
                 .font(.system(size: 11, design: .monospaced))
             HStack {
                 Button("Save") {
-                    store.setAdminKey(keyInput)
-                    keyInput = ""
-                    showingKeyField = false
+                    if store.setAdminKey(keyInput) {
+                        keyInput = ""
+                        keyActionError = nil
+                        showingKeyField = false
+                    } else {
+                        // Keep the field open with the input so the user can retry.
+                        keyActionError = store.isConfigured
+                            ? "Couldn't save the key to the Keychain; the previous key is still in use."
+                            : "Couldn't save the key to the Keychain."
+                    }
                 }
                 .disabled(keyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Cancel") {
                     keyInput = ""
+                    keyActionError = nil
                     showingKeyField = false
                 }
                 .buttonStyle(.borderless)
             }
+            if let keyActionError {
+                keyErrorText(keyActionError)
+            }
         }
+    }
+
+    private func keyErrorText(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.system(size: 10.5))
     }
 
     // MARK: Helpers

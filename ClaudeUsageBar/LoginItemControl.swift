@@ -11,6 +11,17 @@ enum LoginItemControl {
         SMAppService.mainApp.status == .enabled
     }
 
+    /// Registered, but not allowed to run at login: either the user hasn't approved it yet,
+    /// or switched it off in System Settings.
+    static var requiresApproval: Bool {
+        SMAppService.mainApp.status == .requiresApproval
+    }
+
+    /// Opens the Login Items pane (named "Login Items & Extensions" on macOS 15+).
+    static func openSystemSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
     /// Registers or unregisters as needed. Idempotent. Throws the underlying error.
     static func setEnabled(_ enabled: Bool) throws {
         if enabled {
@@ -18,7 +29,9 @@ enum LoginItemControl {
                 try SMAppService.mainApp.register()
             }
         } else {
-            if SMAppService.mainApp.status == .enabled {
+            // Also unregister a pending/blocked item, so unticking clears it completely.
+            let status = SMAppService.mainApp.status
+            if status == .enabled || status == .requiresApproval {
                 try SMAppService.mainApp.unregister()
             }
         }

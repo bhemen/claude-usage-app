@@ -18,8 +18,11 @@ final class UsageStore {
     private(set) var isRefreshing = false
 
     /// Mirrors the real login-item status (not the user's last click), so the toggle can't
-    /// show "on" after a failed or approval-pending registration. Change via `setLaunchAtLogin`.
+    /// show "on" after a failed or approval-pending registration. Change via `setLaunchAtLogin`;
+    /// re-read via `refreshLoginItemStatus`, since System Settings can change it too.
     private(set) var launchAtLogin: Bool
+    /// Registered but not allowed in System Settings (pending approval, or switched off there).
+    private(set) var loginItemNeedsApproval = false
     /// Why the last login-item change didn't take effect. Kept separate from `errorReason`
     /// so the next successful poll doesn't wipe it.
     private(set) var loginItemError: String?
@@ -30,6 +33,7 @@ final class UsageStore {
 
     init() {
         launchAtLogin = LoginItemControl.isEnabled
+        refreshLoginItemStatus()
         start()
     }
 
@@ -112,9 +116,14 @@ final class UsageStore {
         } catch {
             loginItemError = "Login item failed: \(error.localizedDescription)"
         }
-        if enabled && SMAppService.mainApp.status == .requiresApproval {
-            loginItemError = "Approve in System Settings › General › Login Items"
-        }
+        refreshLoginItemStatus()
+    }
+
+    /// Re-reads the real login-item status. The user can approve or switch off the item in
+    /// System Settings at any time, so the popover calls this whenever it opens.
+    func refreshLoginItemStatus() {
         launchAtLogin = LoginItemControl.isEnabled
+        loginItemNeedsApproval = LoginItemControl.requiresApproval
+        if launchAtLogin { loginItemError = nil }
     }
 }

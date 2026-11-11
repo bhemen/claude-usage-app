@@ -118,7 +118,9 @@ it. Building locally avoids that entirely.
    # undo with: ... --unregister-login-item
    ```
    Either way it uses `SMAppService.mainApp`, so the popover checkbox and the actual state
-   stay in sync. It also appears under **System Settings → General → Login Items**.
+   stay in sync. It also appears under **System Settings → General → Login Items** (named
+   **Login Items & Extensions** on macOS 15+). If it's switched off there, or still waiting for
+   approval, the popover says so and offers a button that opens that pane.
 
 ### First run
 
