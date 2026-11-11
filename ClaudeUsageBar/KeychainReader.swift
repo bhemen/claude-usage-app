@@ -27,12 +27,15 @@ enum KeychainReader {
     /// stable Developer ID — and for such an app macOS greys out "Always Allow", so the
     /// prompt can never be silenced. The direct API is kept as a secondary path: if this
     /// app is ever signed with a stable identity and granted access, it works too, and it's
-    /// a backstop if the CLI is unavailable. The credentials file is a last resort.
+    /// a backstop if the CLI is unavailable — but only when the CLI *read* fails, never when
+    /// it read the item and the contents didn't decode. The credentials file is a last resort.
     static func accessToken() -> String? {
-        if let data = readViaSecurityCLI(), let token = decodeToken(from: data) {
-            return token
-        }
-        if let data = readKeychainData(), let token = decodeToken(from: data) {
+        if let data = readViaSecurityCLI() {
+            if let token = decodeToken(from: data) { return token }
+            // The CLI found the item but it holds no OAuth token. Don't fall through to
+            // `SecItemCopyMatching`: it would read the same item but show a keychain prompt,
+            // and the store retries every couple of minutes — a prompt loop.
+        } else if let data = readKeychainData(), let token = decodeToken(from: data) {
             return token
         }
         if let data = readCredentialsFile(), let token = decodeToken(from: data) {

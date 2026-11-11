@@ -46,6 +46,7 @@ final class APIUsageStore {
         pollTask?.cancel()
         AdminKeyStore.clear()
         isConfigured = false
+        isRefreshing = false  // the cancelled poll leaves this alone; see `refresh()`
         summary = nil
         lastUpdated = nil
         errorReason = nil
@@ -81,10 +82,22 @@ final class APIUsageStore {
             return 600
         }
         isRefreshing = true
-        defer { isRefreshing = false }
+        // A superseded poll must not clear the spinner of the poll that replaced it.
+        defer { if !Task.isCancelled { isRefreshing = false } }
+
+        let result: Result<APIUsageSummary, Error>
+        do {
+            result = .success(try await service.fetch(adminKey: key))
+        } catch {
+            result = .failure(error)
+        }
+        // A key change, key removal, or manual refresh cancelled this poll mid-request. Its
+        // result is either a cancellation (not "Offline") or data for a key that's no longer
+        // current, and any replacement poll owns the state — so touch nothing.
+        guard !Task.isCancelled else { return 0 }
 
         do {
-            summary = try await service.fetch(adminKey: key)
+            summary = try result.get()
             lastUpdated = Date()
             errorReason = nil
             consecutiveFailures = 0

@@ -149,11 +149,18 @@ struct UsageMenuView: View {
 
             Toggle(isOn: Binding(
                 get: { store.launchAtLogin },
-                set: { store.launchAtLogin = $0 }
+                set: { store.setLaunchAtLogin($0) }
             )) {
                 Text("Launch at login").font(.system(size: 12))
             }
             .toggleStyle(.checkbox)
+
+            if let loginError = store.loginItemError {
+                Text(loginError)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack {
                 Spacer()

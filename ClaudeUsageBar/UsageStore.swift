@@ -17,11 +17,12 @@ final class UsageStore {
     private(set) var errorReason: String?
     private(set) var isRefreshing = false
 
-    /// Bound to the "Launch at login" toggle. `didSet` is not invoked for the initial
-    /// value set in `init`, so reading the current status there is safe.
-    var launchAtLogin: Bool {
-        didSet { updateLoginItem(launchAtLogin) }
-    }
+    /// Mirrors the real login-item status (not the user's last click), so the toggle can't
+    /// show "on" after a failed or approval-pending registration. Change via `setLaunchAtLogin`.
+    private(set) var launchAtLogin: Bool
+    /// Why the last login-item change didn't take effect. Kept separate from `errorReason`
+    /// so the next successful poll doesn't wipe it.
+    private(set) var loginItemError: String?
 
     private let service = UsageService()
     private var pollTask: Task<Void, Never>?
@@ -59,10 +60,22 @@ final class UsageStore {
     @discardableResult
     private func refresh() async -> Double {
         isRefreshing = true
-        defer { isRefreshing = false }
+        // A superseded poll must not clear the spinner of the poll that replaced it.
+        defer { if !Task.isCancelled { isRefreshing = false } }
+
+        let result: Result<UsageResponse, Error>
+        do {
+            result = .success(try await service.fetch())
+        } catch {
+            result = .failure(error)
+        }
+        // `start()` cancelled this poll (e.g. a manual refresh) while the request was in
+        // flight. Its failure is just URLSession's cancellation, not "Offline", and the
+        // replacement poll now owns the state — so touch nothing.
+        guard !Task.isCancelled else { return 0 }
 
         do {
-            let resp = try await service.fetch()
+            let resp = try result.get()
             snapshot = resp
             lastUpdated = Date()
             errorReason = nil
@@ -91,11 +104,17 @@ final class UsageStore {
         }
     }
 
-    private func updateLoginItem(_ enabled: Bool) {
+    /// Applies the toggle, then re-reads the actual status so the checkbox reflects reality.
+    func setLaunchAtLogin(_ enabled: Bool) {
         do {
             try LoginItemControl.setEnabled(enabled)
+            loginItemError = nil
         } catch {
-            errorReason = "Login item failed: \(error.localizedDescription)"
+            loginItemError = "Login item failed: \(error.localizedDescription)"
         }
+        if enabled && SMAppService.mainApp.status == .requiresApproval {
+            loginItemError = "Approve in System Settings › General › Login Items"
+        }
+        launchAtLogin = LoginItemControl.isEnabled
     }
 }
